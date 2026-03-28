@@ -301,9 +301,18 @@ fn main() -> io::Result<()> {
     });
 
     if !unsafe { libc::isatty(libc::STDIN_FILENO) == 1 } {
-        // Try to reopen /dev/tty for input since stdin was piped
+        // Try to reopen terminal for input since stdin was piped.
+        // On macOS, opening "/dev/tty" directly fails with kqueue (used by crossterm).
+        // Instead, we get the real tty device from stdout.
         unsafe {
-            let tty_fd = libc::open(b"/dev/tty\0".as_ptr() as *const i8, libc::O_RDWR);
+            let mut tty_fd = -1;
+            let tty_name = libc::ttyname(libc::STDOUT_FILENO);
+            if !tty_name.is_null() {
+                tty_fd = libc::open(tty_name, libc::O_RDWR);
+            }
+            if tty_fd < 0 {
+                tty_fd = libc::open(b"/dev/tty\0".as_ptr() as *const i8, libc::O_RDWR);
+            }
             if tty_fd < 0 {
                 eprintln!("error: interactive TUI requires a terminal (stdin is piped and /dev/tty is unavailable)");
                 std::process::exit(1);
